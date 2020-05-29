@@ -1,0 +1,276 @@
+---
+title: "Dashboard SK: 1"
+author: "Nanna Kildahl Mathiasen"
+date: "5/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(pacman)
+p_load(dplyr,tibble, rlang, reshape2, tidyr, tidyverse, ggplot2, lubridate, readr,shiny, shinydashboard)
+
+abs_dic <- dirname(rstudioapi::getSourceEditorContext()$path)
+setwd(abs_dic)
+
+avo_data <- read.csv("avocado.csv", sep = ",", stringsAsFactor=FALSE)
+avo_data$Date <- as.Date(avo_data$Date, format="%Y-%m-%d")
+avo_data <- avo_data %>% filter(region == "Atlanta" | region == "Nashville" | region == "Chicago" | region == "Denver")
+# load data
+search_data <- read.csv("SearchTrend.csv", sep = ",", stringsAsFactor=FALSE)
+search_data$date <- as.Date(search_data$date, format="%Y-%m-%d")
+search_data <- filter(search_data, grepl("2020",date))
+#search_data_subset<- subset(search_data,select=c(cold, flu,pneumonia,coronavirus))
+
+time_data <- read.csv("Time.csv", sep = ";", stringsAsFactor=FALSE)
+time_data$date <- as.Date(time_data$date, format="%Y-%m-%d")
+time_data <- time_data %>% filter(measure == "deaths" | measure == "negative_tested" | measure == "positive_tested" | measure == "total_tested")
+time_data  <- time_data %>% 
+  rename(Measure=measure)
+
+gender_data <- read.csv("TimeGender.csv", sep = ",", stringsAsFactor=FALSE)
+gender_data$date <- as.Date(gender_data$date, format="%Y-%m-%d")
+gender_data  <- gender_data %>% 
+  rename(Gender=sex)
+
+age_data <- read.csv("TimeAge.csv", sep = ",", stringsAsFactor=FALSE)
+age_data <- age_data %>%
+  group_by(age) %>%
+  summarise_at(vars(confirmed), funs(mean(., na.rm=TRUE)))
+
+weather_data <- read.csv("Weather.csv", sep = ",", stringsAsFactor=FALSE)
+weather_data$date <- as.Date(weather_data$date, format="%Y-%m-%d")
+weather_data <- weather_data %>% filter(province == "Busan" | province == "Daegu" | province == "Gwangju")
+weather_data <- filter(weather_data, grepl("2020",date))
+weather_data  <- weather_data %>% 
+  rename(Average_Temperature=avg_temp, 
+         Maximum_Wind_Speed=max_wind_speed, 
+         Average_Humidity=avg_relative_humidity)
+weather_data  <- weather_data %>% 
+  rename(City=province)
+
+province_data <- read.csv("TimeProvince.csv", sep = ",", stringsAsFactor=FALSE)
+province_data$date <- as.Date(province_data$date, format="%Y-%m-%d")
+province_data <- province_data %>% filter(province == "Busan" | province == "Daegu" | province == "Gwangju")
+province_data  <- province_data %>% 
+  rename(City=province)
+
+```
+
+## UI
+
+
+```{r cars}
+ui <- dashboardPage(
+  
+  dashboardHeader(
+    title = "Covid-19 in South Korea",
+    titleWidth = 250),
+  
+  dashboardSidebar(
+    width = 250,
+    sidebarMenu(
+      menuItem("Introduction", tabName ="P0", icon = icon("info")),
+      menuItem("Overview of tested", tabName ="P1", icon = icon("syringe")),
+      menuItem("Demographics of confirmed cases", tabName ="P2", icon = icon("id-card")),
+      menuItem("Weather situation", tabName ="P3", icon = icon("cloud")),
+      menuItem("Online searching trends", tabName ="P4", icon = icon("wifi")),
+      menuItem("Survey", tabName ="lastpage", icon = icon("poll-h"))
+    )
+  ), #sidebar
+  
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "P0",
+              box(width = 12,status = "primary",solidHeader = TRUE,
+                  h4("Welcome to the experiment."),
+                  "Imagine, you are in school and your teacher asks you to look at and inspect graphs about the COVID-19 situation in South Korea. You are given 5 minutes to remember as much as possible. When the 5 minutes is over, you are going to participate in a Q&A (Questions & Answers), where you have the possibility to impress your teacher with your newly gained knowledge. You can be asked questions about anything in the graphs, so try to remember and learn as much as possible.",
+                  h4(""),
+                  "There are four pages with different themes. You can select on the left hand side of the screen. You can see an example of a graph below. In general, feel free to explore.",
+                "When the 5 minutes is over, please go to the last page on the left hand side, called 'Survey' and you will be taken to the Q&A.",
+                  "Please, set a timer for 5 minutes and begin the exploration.",
+                plotOutput(outputId = "testing_plot")
+              )#tabItem ends
+      ),
+      tabItem(tabName = "P1",
+              box(
+      title = "Overview: Testing results and deaths", width = 12, status = "primary",solidHeader = TRUE,
+      plotOutput(outputId = "overview_plot"))#tabItem ends
+      ),#tabItem ends
+      tabItem(tabName = "P2",
+              fluidRow(
+                column(12, 
+                       box(title = "Confirmed cases for males and females", status = "primary",solidHeader = TRUE, plotOutput(outputId = "gender_plot")),
+                       box(title = "Confirmed cases for age groups", status = "primary",solidHeader = TRUE,plotOutput(outputId = "age_plot"))
+              )#tabItem ends
+      )),
+      tabItem(tabName = "P3",
+              fluidRow(
+                column(12,
+                       box(title = "Average Temperature", status = "primary",plotOutput(outputId = "temp_plot",height = "200px")),
+                       box(title = "Maximum Wind Speed", status = "primary",plotOutput(outputId = "wind_plot",height = "200px"))),
+              fluidRow(
+                column(12,
+                       box(title = "Average Humidity", status = "primary",plotOutput(outputId = "humidity_plot",height = "200px")),
+                       box(title = "Confirmed cases in Busan, Daegu & Gwangju", status = "primary",plotOutput(outputId = "regioncases_plot",height = "200px"))
+              )
+                )
+      )),
+      tabItem(tabName = "P4",
+              fluidRow(
+                column(12,
+                       box(title = "Searches for Flu in 2020", status="primary",plotOutput(outputId = "flu_plot",height = "200px")),
+                       box(title = "Searches for Pneumonia in 2020", status="warning",plotOutput(outputId = "pneumonia_plot",height = "200px")
+                )),
+              fluidRow(
+                column(12,
+                       box(title = "Searches for Coronavirus in 2020", status="danger",plotOutput(outputId = "corona_plot",height = "200px")),
+                       box(title = "Searches for Cold in 2020", status="success",plotOutput(outputId = "cold_plot",height = "200px")
+              )
+                )
+      ))),
+      tabItem(tabName = "lastpage",
+              box(width = 12,status = "primary",solidHeader = TRUE,
+            h4("Time is up and it is now the time for the Q&A."),
+            "You will be asked questions and also how certain you are about what you remember. When you have completed the Q&A, you are asked to evaluate the usefulness of the graphs. Please, follow the link and you will be redirected to an online questionnaire.",
+            h4(""),
+            h4("When asked in the questionnaire, your Group ID is 1."),
+            uiOutput("tab")
+            )#tabItem ends
+      )
+    )#tabItems
+  )#body
+)#ui end
+
+```
+
+## output
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+server <- function(input, output) {
+  
+  output$testing_plot <- renderPlot({
+    ggplot(avo_data, aes(x = Date, y = AveragePrice, color=region)) + geom_line(size = 0.3,alpha = 0.7) +
+      #geom_point(size = 1, alpha = 0.8) +
+      ylab("") + xlab("Date") +ggtitle("Test plot: Average Price of Avocado's in different regions") +theme_bw() + 
+      #scale_y_continuous(labels = function(l) {trans = l / 1000; paste0(trans, "K")}) +
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0","#e89715")) +
+      theme(legend.position = "right", plot.title = element_text(size=16), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$overview_plot <- renderPlot({
+    ggplot(time_data, aes(x = date, y = test, color=Measure)) + geom_line() +
+      #geom_point(size = 1, alpha = 0.8) +
+      ylab("") + xlab("Date") +theme_bw() + scale_y_continuous(labels = function(l) {trans = l / 1000; paste0(trans, "K")}) +
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0","#e89715")) +
+      theme(legend.position = "right", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$gender_plot <- renderPlot({
+    ggplot(gender_data, aes(x = date, y = confirmed, color=Gender)) + geom_line() +
+      geom_point(size = 1, alpha = 0.8) +
+      ylab("Confirmed cases") + xlab("Date") +theme_bw() + 
+      #scale_y_continuous(labels = function(l) {trans = l / 1000; paste0(trans, "K")}) +
+      scale_color_manual(values = c("#AA0000","#2C5AA0")) +
+      theme(legend.position = "right", plot.title=element_text(size=10), 
+      plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$age_plot <- renderPlot({
+    ggplot(age_data, aes(x = age,y=confirmed)) +
+      ylab("Confirmed cases") + xlab("Age")+
+      geom_bar(stat="identity",width=.5, fill = "#36803d") +
+    theme_bw() +
+   theme(legend.title = element_blank(), legend.position = "", plot.title=element_text(size=10), 
+      plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$temp_plot <- renderPlot({
+    ggplot(weather_data, aes(x = date, y = Average_Temperature, color=City)) +
+      geom_point(size = 0.7, alpha = 0.5) +
+      ylab("") + xlab("Date") +theme_bw() + 
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0")) +
+      theme(legend.position = "right", plot.title=element_text(size=10), 
+      plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$wind_plot <- renderPlot({
+    ggplot(weather_data, aes(x = date, y = Maximum_Wind_Speed, color=City)) +
+      geom_point(size = 0.7, alpha = 0.5) +
+      ylab("") + xlab("Date") +theme_bw() + 
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0")) +
+      theme(legend.position = "right", plot.title=element_text(size=10), 
+      plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$humidity_plot <- renderPlot({
+    ggplot(weather_data, aes(x = date, y = Average_Humidity, color=City)) +
+      geom_point(size = 0.7, alpha = 0.5) +
+      ylab("") + xlab("Date") +theme_bw() + 
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0")) +
+      theme(legend.position = "right", plot.title=element_text(size=10), 
+      plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$regioncases_plot <- renderPlot({
+    ggplot(province_data, aes(x = date, y = confirmed, color=City)) +
+      geom_point(size = 0.7, alpha = 0.5) +
+      ylab("Confirmed cases") + xlab("Date") +theme_bw() + 
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0")) +
+      theme(legend.position = "right", plot.title=element_text(size=10), 
+      plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$flu_plot <- renderPlot({
+    ggplot(search_data, aes(x = date, y = flu)) + geom_line(color="#2C5AA0") +
+      geom_point(size = .1, alpha = 0.8,color="#2C5AA0") +
+      ylab("Number of searches") + xlab("Date") +theme_bw() + ylim(0,100)+
+      theme(legend.title = element_blank(), legend.position = "", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$pneumonia_plot <- renderPlot({
+    ggplot(search_data, aes(x = date, y = pneumonia)) + geom_line(color="#e89715") +
+      geom_point(size = .1, alpha = 0.8,color="#e89715") +
+      ylab("Number of searches") + xlab("Date") +theme_bw() + ylim(0,100)+
+      theme(legend.title = element_blank(), legend.position = "", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$corona_plot <- renderPlot({
+    ggplot(search_data, aes(x = date, y = coronavirus)) + geom_line(color="#AA0000") +
+      geom_point(size = .1, alpha = 0.8,color="#AA0000") +
+      ylab("Number of searches") + xlab("Date") +theme_bw() + ylim(0,100)+
+      theme(legend.title = element_blank(), legend.position = "", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$cold_plot <- renderPlot({
+    ggplot(search_data, aes(x = date, y = cold)) + geom_line(color="#36803d") +
+      geom_point(size = .1, alpha = 0.8,color="#36803d") +
+      ylab("Number of searches") + xlab("Date") +theme_bw() + ylim(0,100)+
+      theme(legend.title = element_blank(), legend.position = "", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  url <- a("Survey", href="https://www.survey-xact.dk/LinkCollector?key=RNK5HUW6J236")
+  
+  output$tab <- renderUI({
+      tagList("Please, follow the link:", url)
+  })
+  
+}#server end
+
+```
+
+# run app
+
+```{r setup, include=FALSE}
+
+shinyApp(ui, server) #Run app
+```
+
+

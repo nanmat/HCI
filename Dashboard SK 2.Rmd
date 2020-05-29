@@ -1,0 +1,229 @@
+---
+title: "Dashboard SK: 2"
+author: "Nanna Kildahl Mathiasen"
+date: "5/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(pacman)
+p_load(dplyr,tibble, rlang, reshape2, tidyr, tidyverse, ggplot2, lubridate, readr,plotly,shiny, shinydashboard,scales)
+
+abs_dic <- dirname(rstudioapi::getSourceEditorContext()$path)
+setwd(abs_dic)
+
+avo_data <- read.csv("avocado.csv", sep = ",", stringsAsFactor=FALSE)
+avo_data$Date <- as.Date(avo_data$Date, format="%Y-%m-%d")
+avo_data <- avo_data %>% filter(region == "Atlanta" | region == "Nashville" | region == "Chicago" | region == "Denver")
+# load data
+search_data <- read.csv("SearchTrend.csv", sep = ",", stringsAsFactor=FALSE)
+search_data$date <- as.Date(search_data$date, format="%Y-%m-%d")
+search_data <- filter(search_data, grepl("2020",date))
+#search_data$date <- as.Date(search_data$date, "%m-%d-%y")
+search_data_subset<- subset(search_data,select=c(cold, flu,pneumonia,coronavirus))
+
+time_data <- read.csv("Time.csv", sep = ";", stringsAsFactor=FALSE)
+time_data$date <- as.Date(time_data$date, format="%Y-%m-%d")
+time_data <- time_data %>% filter(measure == "deaths" | measure == "negative_tested" | measure == "positive_tested" | measure == "total_tested")
+time_data  <- time_data %>% 
+  rename(Measure=measure)
+
+gender_data <- read.csv("TimeGender.csv", sep = ",", stringsAsFactor=FALSE)
+gender_data$date <- as.Date(gender_data$date, format="%Y-%m-%d")
+gender_data  <- gender_data %>% 
+  rename(Gender=sex)
+
+age_data <- read.csv("TimeAge.csv", sep = ",", stringsAsFactor=FALSE)
+age_data <- age_data %>%
+  group_by(age) %>%
+  summarise_at(vars(confirmed), funs(mean(., na.rm=TRUE)))
+
+weather_data <- read.csv("Weather.csv", sep = ",", stringsAsFactor=FALSE)
+weather_data$date <- as.Date(weather_data$date, format="%Y-%m-%d")
+weather_data <- weather_data %>% filter(province == "Busan" | province == "Daegu" | province == "Gwangju")
+weather_data <- filter(weather_data, grepl("2020",date))
+weather_data  <- weather_data %>% 
+  rename(Average_Temperature=avg_temp, 
+         Maximum_Wind_Speed=max_wind_speed, 
+         Average_Humidity=avg_relative_humidity)
+weather_data_subset <- subset(weather_data,select=c(Average_Temperature, Maximum_Wind_Speed,Average_Humidity))
+
+
+province_data <- read.csv("TimeProvince.csv", sep = ",", stringsAsFactor=FALSE)
+province_data$date <- as.Date(province_data$date, format="%Y-%m-%d")
+province_data <- province_data %>% filter(province == "Busan" | province == "Daegu" | province == "Gwangju")
+
+```
+
+## UI
+
+
+```{r cars}
+ui <- dashboardPage(
+  
+  dashboardHeader(
+    title = "Covid-19 in South Korea",
+    titleWidth = 250),
+  
+  dashboardSidebar(
+    width = 250,
+    sidebarMenu(
+      menuItem("Introduction", tabName ="P0", icon = icon("info")),
+      menuItem("Overview of tested", tabName ="P1", icon = icon("syringe")),
+      menuItem("Demographics of confirmed cases", tabName ="P2", icon = icon("id-card")),
+      menuItem("Weather situation", tabName ="P3", icon = icon("cloud")),
+      menuItem("Online searching trends", tabName ="P4", icon = icon("wifi")),
+      menuItem("Survey", tabName ="lastpage", icon = icon("poll-h"))
+    )
+  ), #sidebar
+  
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "P0",
+              box(width = 12,status = "primary",solidHeader = TRUE,
+                  h4("Welcome to the experiment."),
+                  "Imagine, you are in school and your teacher asks you to look at and inspect graphs about the COVID-19 situation in South Korea. You are given 5 minutes to remember as much as possible. When the 5 minutes is over, you are going to participate in a Q&A (Questions & Answers), where you have the possibility to impress your teacher with your newly gained knowledge. You can be asked questions about anything in the graphs, so try to remember and learn as much as possible.",
+                  h4(""),
+                  "There are four pages with different themes. You can select on the left hand side of the screen. If you move your mouse over the graphs, you will see the specific values of the observation. If there are two or more categories represented at the graph, you can remove a category from the graph by clicking on the category on the right hand side of the graph. You get the category back on the graph by clicking it again. You can test it out on the graph below. In other cases, there will be a box from which you can select the kind of observation that you want to explore. In general, feel free to explore.",
+                "When the 5 minutes is over, please go to the last page on the left hand side, called 'Survey' and you will be taken to the Q&A.",
+                  "Please, set a timer for 5 minutes and begin the exploration.",
+                plotlyOutput(outputId = "testing_plot")
+              )#tabItem ends
+      ),
+      tabItem(tabName = "P1",
+              box(
+                title = "Overview: Testing results and deaths", width = 12, status = "primary",solidHeader = TRUE,
+                plotlyOutput(outputId = "overview_plot"))#tabItem ends
+      ),#tabItem ends
+      tabItem(tabName = "P2",
+              fluidRow(
+                column(12, 
+                       box(title = "Confirmed cases for males and females", status = "primary",solidHeader = TRUE, plotlyOutput(outputId = "gender_plot")),
+                       box(title = "Confirmed cases for age groups", status = "primary",solidHeader = TRUE,plotlyOutput(outputId = "age_plot"))
+                )#tabItem ends
+              )),
+      tabItem(tabName = "P3",
+              fluidRow(
+                column(12,
+                       box(title = "Choose weather measure", width = 6, solidHeader = TRUE, status = "primary",
+                           varSelectInput("variable_weather", "Weather:", weather_data_subset))),
+                column(12,
+                       box(title = "Weather measures in three cities", status = "primary",solidHeader = TRUE, plotlyOutput(outputId = "weather_plot")),
+                       box(title = "Cases in three cities", status = "primary",solidHeader = TRUE, plotlyOutput(outputId = "regioncases_plot"))
+                )
+              )),#tabItem ends
+      tabItem(tabName = "P4",
+              fluidRow(
+                box(title = "Choose word of search", width = 5, solidHeader = TRUE, status = "primary",
+                    varSelectInput("variable_search", "Word:", search_data_subset)),
+                fluidRow(
+                  box(title = "Searches in 2020", status="primary",solidHeader = TRUE,plotlyOutput(outputId = "search_plot"))
+                )
+              )#tabItem ends
+      ),
+      tabItem(tabName = "lastpage",
+              box(width = 12,status = "primary",solidHeader = TRUE,
+                  h4("Time is up and it is now the time for the Q&A."),
+            "You will be asked questions and also how certain you are about what you remember. When you have completed the Q&A, you are asked to evaluate the usefulness of the graphs. Please, follow the link and you will be redirected to an online questionnaire.",
+                  h4(""),
+                  h4("When asked in the questionnaire, your Group ID is 2."),
+                  uiOutput("tab")
+              )#tabItem ends
+      )
+    )#tabItems
+  )#body
+)#ui end
+
+```
+
+## output
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+server <- function(input, output) {
+  output$testing_plot <- renderPlotly({
+    plot <- ggplot(avo_data, aes(x = Date, y = AveragePrice, color=region)) + geom_line(size = 0.3,alpha = 0.7) +
+      #geom_point(size = 1, alpha = 0.8) +
+      ylab("") + xlab("Date") +ggtitle("Test plot: Average Price of Avocado's in different regions") + theme_bw() + 
+      #scale_y_continuous(labels = function(l) {trans = l / 1000; paste0(trans, "K")}) +
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0","#e89715")) +
+      theme(legend.title = element_blank(), legend.position = "", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$overview_plot <- renderPlotly({
+    plot1 <- ggplot(time_data, aes(x = date, y = test, color=Measure)) + geom_line() +
+      #geom_point(size = 1, alpha = 0.8) +
+      ylab("") + xlab("Date") +theme_bw() + scale_y_continuous(labels = function(l) {trans = l / 1000; paste0(trans, "K")}) +
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0","#e89715")) +
+      theme(legend.title = element_blank(), legend.position = "", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$gender_plot <- renderPlotly({
+    plot2 <- ggplot(gender_data, aes(x = date, y = confirmed, color=Gender)) + geom_line() +
+      geom_point(size = 1, alpha = 0.8) +
+      ylab("Confirmed cases") + xlab("Date") +theme_bw() + 
+      #scale_y_continuous(labels = function(l) {trans = l / 1000; paste0(trans, "K")}) +
+      scale_color_manual(values = c("#AA0000","#2C5AA0")) +
+      theme(legend.title = element_blank(), legend.position = "", plot.title=element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$age_plot <- renderPlotly({
+    plot3 <- ggplot(age_data, aes(x = age,y=confirmed)) +
+      geom_bar(stat="identity",width=.5, fill = "#36803d") +
+      ylab("Confirmed cases") +xlab("Age")+
+      theme_bw() +
+      theme(legend.title = element_blank(), legend.position = "", plot.title=element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$weather_plot <- renderPlotly({
+    plot4 <- ggplot(weather_data, aes(x = date, y = !!input$variable_weather, color=province)) +
+      geom_point(size = 0.7, alpha = 0.5) +
+      ylab("") + xlab("Date") +theme_bw() +
+      scale_x_date(labels = date_format("%b"))+
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0")) +
+      theme(legend.title = element_blank(), legend.position = "", plot.title=element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$regioncases_plot <- renderPlotly({
+    plot5 <- ggplot(province_data, aes(x = date, y = confirmed, color=province)) +
+      geom_point(size = 0.7, alpha = 0.5) +
+      ylab("Confirmed cases") + xlab("Date") +theme_bw() + 
+      #scale_x_date(labels = date_format("%b"))+
+      scale_color_manual(values = c("#AA0000","#36803d","#2C5AA0")) +
+      theme(legend.title = element_blank(), legend.position = "", plot.title=element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  output$search_plot <- renderPlotly({
+    plot6 <- ggplot(search_data, aes(x = date, y = !!input$variable_search)) + geom_line(color="#2C5AA0") +
+      geom_point(size = .1, alpha = 0.8,color="#2C5AA0") +
+      ylab("Number of searches") + xlab("Date") +theme_bw() + ylim(0,100)+
+      scale_x_date(labels = date_format("%b")) +
+      theme(legend.title = element_blank(), legend.position = "", plot.title = element_text(size=10), 
+            plot.margin = margin(5, 12, 5, 5))
+  })
+  
+  url <- a("Survey", href="https://www.survey-xact.dk/LinkCollector?key=RNK5HUW6J236")
+  
+  output$tab <- renderUI({
+    tagList("Please, follow the link:", url)
+  })
+  
+}#server end
+
+```
+
+# run app
+
+```{r setup, include=FALSE}
+
+shinyApp(ui, server) #Run app
+```
+
+
